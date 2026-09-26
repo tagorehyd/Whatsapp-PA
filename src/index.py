@@ -1,4 +1,6 @@
 import asyncio
+import hashlib
+import hmac
 import json
 import os
 import re
@@ -34,6 +36,22 @@ def sanitize_reply(value: str) -> str | None:
     return reply[:600]
 
 
+def has_valid_webhook_signature(raw_body: bytes, signature: str | None) -> bool:
+    """Validate WA-AKG's optional sha256=<hex> webhook signature.
+
+    A webhook without a configured WA-AKG secret has no signature and remains
+    supported. When a secret is configured, invalid payloads are acknowledged
+    but never queued for processing, preserving WA-AKG's short-timeout contract.
+    """
+    secret = os.getenv("WEBHOOK_SECRET")
+    if not secret:
+        return True
+    if not signature or not signature.startswith("sha256="):
+        return False
+    expected = hmac.new(secret.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(signature.removeprefix("sha256="), expected)
+
+
 async def process_webhook(raw_body: bytes) -> None:
     try:
         payload = json.loads(raw_body)
@@ -63,6 +81,9 @@ async def process_webhook(raw_body: bytes) -> None:
 async def webhook_handler(request: Request, background_tasks: BackgroundTasks) -> JSONResponse:
     raw_body = await request.body()
     response = JSONResponse(status_code=200, content={"ok": True})
+    if not has_valid_webhook_signature(raw_body, request.headers.get("X-Webhook-Signature")):
+        logger.error("Rejected webhook with an invalid WA-AKG signature")
+        return response
     background_tasks.add_task(process_webhook, raw_body)
     response.background = background_tasks
     return response
