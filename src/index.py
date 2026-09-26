@@ -1,6 +1,4 @@
 import asyncio
-import hashlib
-import hmac
 import json
 import os
 import re
@@ -36,29 +34,14 @@ def sanitize_reply(value: str) -> str | None:
     return reply[:600]
 
 
-def has_valid_webhook_signature(raw_body: bytes, signature: str | None) -> bool:
-    """Validate WA-AKG's optional sha256=<hex> webhook signature.
-
-    A webhook without a configured WA-AKG secret has no signature and remains
-    supported. When a secret is configured, invalid payloads are acknowledged
-    but never queued for processing, preserving WA-AKG's short-timeout contract.
-    """
-    secret = os.getenv("WEBHOOK_SECRET")
-    if not secret:
-        return True
-    if not signature or not signature.startswith("sha256="):
-        return False
-    expected = hmac.new(secret.encode("utf-8"), raw_body, hashlib.sha256).hexdigest()
-    return hmac.compare_digest(signature.removeprefix("sha256="), expected)
-
-
 async def process_webhook(raw_body: bytes) -> None:
     try:
         payload = json.loads(raw_body)
         message = normalize_event(payload)
         if not message:
-            logger.debug("Ignored webhook event")
+            logger.info("Ignored WA-AKG webhook event=%s", payload.get("event"))
             return
+        logger.info("Processing incoming WA-AKG message jid=%s message_id=%s", message["jid"], message["message_id"])
         # Contact creation always precedes either messages-table insert.
         await asyncio.to_thread(ensure_contact, message["jid"], message["push_name"])
         inserted_id = await asyncio.to_thread(insert_incoming_message, message["jid"], message["text"], message["message_id"])
@@ -67,6 +50,7 @@ async def process_webhook(raw_body: bytes) -> None:
             return
         limit = int(os.getenv("CONTEXT_MESSAGES", "30"))
         transcript = await asyncio.to_thread(get_recent_messages, message["jid"], limit)
+        logger.info("Requesting LLM reply jid=%s transcript_messages=%s", message["jid"], len(transcript))
         raw_reply = await asyncio.to_thread(generate_reply, message["jid"], message["push_name"], transcript)
         reply = sanitize_reply(raw_reply)
         if not reply:
@@ -74,6 +58,7 @@ async def process_webhook(raw_body: bytes) -> None:
             return
         await asyncio.to_thread(send_reply, message["jid"], reply, message["message_id"])
         await asyncio.to_thread(insert_outgoing_message, message["jid"], reply)
+        logger.info("Sent WA-AKG reply jid=%s message_id=%s", message["jid"], message["message_id"])
     except Exception:
         logger.exception("Webhook processing failed")
 
@@ -81,9 +66,7 @@ async def process_webhook(raw_body: bytes) -> None:
 async def webhook_handler(request: Request, background_tasks: BackgroundTasks) -> JSONResponse:
     raw_body = await request.body()
     response = JSONResponse(status_code=200, content={"ok": True})
-    if not has_valid_webhook_signature(raw_body, request.headers.get("X-Webhook-Signature")):
-        logger.error("Rejected webhook with an invalid WA-AKG signature")
-        return response
+    logger.info("Received WA-AKG webhook path=%s bytes=%s", request.url.path, len(raw_body))
     background_tasks.add_task(process_webhook, raw_body)
     response.background = background_tasks
     return response
