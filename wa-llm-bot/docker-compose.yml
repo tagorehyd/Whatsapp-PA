@@ -1,0 +1,48 @@
+services:
+  bot:
+    build: .
+    ports:
+      - "3001:3001"
+    environment:
+      WA_BASE_URL: ${WA_BASE_URL}
+      WA_API_KEY: ${WA_API_KEY}
+      WA_SESSION_ID: ${WA_SESSION_ID}
+      LLM_BASE_URL: ${LLM_BASE_URL}
+      LLM_API_KEY: ${LLM_API_KEY}
+      LLM_MODEL: ${LLM_MODEL}
+      CONTEXT_MESSAGES: ${CONTEXT_MESSAGES:-30}
+      DATA_DIR: /app/data
+      DEBUG: ${DEBUG:-false}
+      PORT: 3001
+      DATABASE_URL: postgresql://botuser:botpass@postgres:5432/botdb
+    volumes:
+      - ./data:/app/data:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - bot-network
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: botuser
+      POSTGRES_PASSWORD: botpass
+      POSTGRES_DB: botdb
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U botuser -d botdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - bot-network
+
+volumes:
+  pgdata:
+
+networks:
+  bot-network:
+    driver: bridge
