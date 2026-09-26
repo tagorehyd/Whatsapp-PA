@@ -15,6 +15,18 @@ app = FastAPI()
 BANNED_REPLY_TEXT = re.compile(r"let me think|the user is asking|i need to reply|i should reply|analysis:|reasoning:|chain of thought|let me analyze", re.IGNORECASE)
 
 
+@app.on_event("startup")
+async def log_runtime_configuration() -> None:
+    """Log non-secret routing values to make container misconfiguration visible."""
+    logger.info(
+        "Bot started port=%s wa_base_url=%s session_id=%s llm_model=%s",
+        os.getenv("PORT", "3001"),
+        os.getenv("WA_BASE_URL", "<missing>"),
+        os.getenv("WA_SESSION_ID", "<missing>"),
+        os.getenv("LLM_MODEL", "<missing>"),
+    )
+
+
 def normalize_event(payload: dict) -> dict | None:
     data = payload.get("data") or {}
     key = data.get("key") or {}

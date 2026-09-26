@@ -13,6 +13,9 @@ with an OpenAI-compatible LLM, and sends that reply through WA-AKG.
    * If WA-AKG is running on the same Docker host on port 3000, use
      `WA_BASE_URL=http://host.docker.internal:3000`. The included Compose file
      maps this hostname to the Docker host on Linux.
+     If your Docker installation does not resolve that hostname, use the Docker
+     bridge gateway address instead. In the supplied log, WA-AKG reached the
+     bot from `172.20.0.1`, so use `WA_BASE_URL=http://172.20.0.1:3000`.
    * If WA-AKG is on another server, use its LAN/public address, for example
      `WA_BASE_URL=http://144.24.138.161:3000`.
    * Do **not** use `http://localhost:3000` or `http://127.0.0.1:3000`: inside
@@ -58,6 +61,18 @@ with an OpenAI-compatible LLM, and sends that reply through WA-AKG.
 
   Replace the URL in that command with your configured `WA_BASE_URL`. A `200`
   confirms networking; a `401` still confirms the gateway is reachable.
+* `Temporary failure in name resolution` means the hostname in `WA_BASE_URL`
+  cannot be resolved by the bot container. Recreate the bot so the Compose
+  `host.docker.internal` mapping is applied, then inspect the active setting:
+
+  ```bash
+  docker compose up -d --build --force-recreate bot
+  docker compose exec bot python -c "import os, socket; host=os.environ['WA_BASE_URL'].split('//', 1)[-1].split(':', 1)[0]; print(os.environ['WA_BASE_URL']); print(socket.gethostbyname(host))"
+  ```
+
+  If `host.docker.internal` still fails to resolve, set
+  `WA_BASE_URL=http://172.20.0.1:3000` (the gateway address shown in your
+  webhook log), then repeat the recreate command.
 * The Postgres message **"database directory appears to contain a database;
   Skipping initialization"** is normal for an existing `pgdata` volume.
   PostgreSQL runs `db/init.sql` only when the volume is created. For a fresh,
