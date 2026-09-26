@@ -49,6 +49,7 @@ def sanitize_reply(value: str) -> str | None:
 async def process_webhook(raw_body: bytes) -> None:
     try:
         payload = json.loads(raw_body)
+        logger.debug("WA-AKG webhook payload json=%s", json.dumps(payload, ensure_ascii=False))
         message = normalize_event(payload)
         if not message:
             logger.info("Ignored WA-AKG webhook event=%s", payload.get("event"))
@@ -79,6 +80,7 @@ async def webhook_handler(request: Request, background_tasks: BackgroundTasks) -
     raw_body = await request.body()
     response = JSONResponse(status_code=200, content={"ok": True})
     logger.info("Received WA-AKG webhook path=%s bytes=%s", request.url.path, len(raw_body))
+    logger.debug("WA-AKG webhook raw_body=%s", raw_body.decode("utf-8", errors="replace"))
     background_tasks.add_task(process_webhook, raw_body)
     response.background = background_tasks
     return response

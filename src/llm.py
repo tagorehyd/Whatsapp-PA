@@ -29,18 +29,22 @@ def generate_reply(jid: str, push_name: str, transcript: list[dict[str, str]]) -
         f"{'Them' if message['role'] == 'user' else 'Me'}: {message['content']}" for message in transcript
     ) + '\nWrite ONLY the next "Me:" reply. Do not explain your thinking.'
     client = OpenAI(base_url=os.environ["LLM_BASE_URL"].rstrip("/"), api_key=os.environ["LLM_API_KEY"])
-    response = client.chat.completions.create(
-        model=os.environ["LLM_MODEL"],
-        messages=[
+    request = {
+        "model": os.environ["LLM_MODEL"],
+        "messages": [
             {"role": "system", "content": BEHAVIOR},
             {"role": "system", "content": context},
             {"role": "system", "content": contact_block},
             {"role": "user", "content": transcript_text},
             {"role": "assistant", "content": "Me:"},
         ],
-        temperature=0.7,
-        max_tokens=300,
-        tool_choice="none",
+        "temperature": 0.7,
+        "max_tokens": 300,
+        "tool_choice": "none",
+    }
+    logger.debug("LLM request json=%s", json.dumps(request, ensure_ascii=False))
+    response = client.chat.completions.create(
+        **request,
     )
-    logger.debug("LLM completion received; total_tokens=%s", getattr(response.usage, "total_tokens", None))
+    logger.debug("LLM response json=%s", json.dumps(response.model_dump(mode="json"), ensure_ascii=False))
     return response.choices[0].message.content or ""

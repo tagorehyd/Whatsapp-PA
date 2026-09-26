@@ -29,6 +29,11 @@ with an OpenAI-compatible LLM, and sends that reply through WA-AKG.
    docker compose logs -f bot
    ```
 
+   Set `DEBUG=true` in `.env` before starting to log the complete webhook JSON,
+   LLM request/response JSON, and WA-AKG request/response JSON. API keys are
+   never written to the log, but messages and your personal context are, so do
+   not enable it in a shared production log sink.
+
 5. Configure WA-AKG to deliver the `message.received` event to an address it
    can reach, for example `http://YOUR_BOT_HOST_IP:3001/webhook`. Do **not**
    use `localhost` unless WA-AKG runs in the same network namespace as the
@@ -49,6 +54,12 @@ with an OpenAI-compatible LLM, and sends that reply through WA-AKG.
 * Use WA-AKG's webhook test action after creating the webhook. The bot log
   should first show `Received WA-AKG webhook`. A real text message then logs
   `Processing incoming`, `Requesting LLM reply`, and `Sent WA-AKG reply`.
+* The database accepts an incoming WA-AKG `message_id` only once. When a retry
+  has the same ID, the bot logs `Duplicate WA-AKG webhook ignored` and does not
+  call the LLM or send another reply. If you see multiple sends with **different**
+  message IDs for one WhatsApp message, open the WA-AKG Webhooks dashboard and
+  remove duplicate webhook registrations; keep exactly one `message.received`
+  webhook for this bot URL.
 * `Connection refused` after `Requesting LLM reply` means the LLM worked and
   the bot reached the send step, but `WA_BASE_URL` is not reachable **from the
   bot container**. Set it using step 3, rebuild the bot, then verify it from
