@@ -17,6 +17,9 @@ services:
       DATABASE_URL: postgresql://botuser:botpass@postgres:5432/botdb
     volumes:
       - ./data:/app/data:ro
+    # Lets the bot call a WA-AKG gateway running on this Docker host.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       postgres:
         condition: service_healthy
